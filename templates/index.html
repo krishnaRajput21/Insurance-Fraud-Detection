@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automobile Insurance Fraud Detection</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8f9fa;
+        }
+
+        .main-card {
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.08);
+            margin-top: 3rem;
+            margin-bottom: 3rem;
+        }
+
+        .card-header-custom {
+            background: linear-gradient(135deg, #0d6efd, #0dcaf0);
+            color: white;
+            border-top-left-radius: 12px !important;
+            border-top-right-radius: 12px !important;
+            padding: 1.5rem;
+        }
+
+        .form-label {
+            font-weight: 500;
+            color: #495057;
+            text-transform: capitalize;
+        }
+
+        .form-control:focus {
+            box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.15);
+        }
+
+        .result-box {
+            display: none;
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-top: 1.5rem;
+            text-align: center;
+            font-weight: 600;
+            font-size: 1.25rem;
+            animation: fadeIn 0.4s ease-in;
+        }
+
+        .result-fraud {
+            background-color: #f8d7da;
+            color: #842029;
+            border: 1px solid #f5c2c7;
+        }
+
+        .result-genuine {
+            background-color: #d1e7dd;
+            color: #0f5132;
+            border: 1px solid #badbcc;
+        }
+
+        .spinner-container {
+            display: none;
+            text-align: center;
+            margin-top: 1.5rem;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-8 col-md-10">
+                <div class="card main-card">
+                    <div class="card-header card-header-custom text-center">
+                        <h2 class="h3 mb-1"><i class="bi bi-shield-check me-2"></i>Fraud Detection System</h2>
+                        <p class="mb-0 text-white-50">Enter the details of the automobile insurance claim below</p>
+                    </div>
+
+                    <div class="card-body p-4 p-md-5">
+
+                        <!-- Alert for errors -->
+                        <div id="errorAlert" class="alert alert-danger d-none" role="alert">
+                        </div>
+
+                        <form id="predictionForm" class="needs-validation" novalidate>
+                            <div class="row g-3">
+
+                                {% if features %}
+                                {% for col in features %}
+                                <div class="col-md-6">
+                                    <label for="{{ col }}" class="form-label">{{ col.replace('_', ' ') }}</label>
+                                    <div class="input-group has-validation">
+                                        <input type="number" class="form-control bg-light" id="{{ col }}"
+                                            name="{{ col }}" step="any" required
+                                            placeholder="Enter {{ col.replace('_', ' ') }}">
+                                        <div class="invalid-feedback">
+                                            Please provide a valid number.
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                                {% else %}
+                                <div class="col-12">
+                                    <div class="alert alert-info">
+                                        <i class="bi bi-info-circle me-2"></i>Model features not loaded. Please run
+                                        <code>model_training.py</code> first.
+                                    </div>
+                                </div>
+                                {% endif %}
+
+                            </div>
+
+                            <div class="mt-4 text-center">
+                                <button class="btn btn-primary btn-lg w-100" type="submit" id="submitBtn" {% if not
+                                    features %}disabled{% endif %}>
+                                    <i class="bi bi-magic me-2"></i>Predict Claim Status
+                                </button>
+                            </div>
+                        </form>
+
+                        <!-- Loading Spinner -->
+                        <div class="spinner-container" id="loadingSpinner">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2 text-muted">Analyzing claim patterns...</p>
+                        </div>
+
+                        <!-- Result Box -->
+                        <div id="resultBox" class="result-box mt-4">
+                            <i id="resultIcon" class="bi fs-1 d-block mb-2"></i>
+                            <span id="resultText"></span>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap 5 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const form = document.getElementById('predictionForm');
+            const submitBtn = document.getElementById('submitBtn');
+            const loadingSpinner = document.getElementById('loadingSpinner');
+            const resultBox = document.getElementById('resultBox');
+            const resultText = document.getElementById('resultText');
+            const resultIcon = document.getElementById('resultIcon');
+            const errorAlert = document.getElementById('errorAlert');
+
+            form.addEventListener('submit', function (event) {
+                event.preventDefault();
+
+                // Bootstrap Form Validation
+                if (!form.checkValidity()) {
+                    event.stopPropagation();
+                    form.classList.add('was-validated');
+                    return;
+                }
+
+                form.classList.add('was-validated');
+
+                // Hide previous results/errors
+                resultBox.style.display = 'none';
+                errorAlert.classList.add('d-none');
+
+                // Show loading
+                submitBtn.disabled = true;
+                loadingSpinner.style.display = 'block';
+
+                // Gather form data
+                const formData = new FormData(form);
+
+                // Fetch request to backend
+                fetch('/predict', {
+                    method: 'POST',
+                    body: formData
+                })
+                    .then(response => {
+                        if (!response.ok) {
+                            return response.json().then(err => { throw err; });
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        // Success
+                        loadingSpinner.style.display = 'none';
+                        submitBtn.disabled = false;
+
+                        resultBox.classList.remove('result-fraud', 'result-genuine');
+                        resultIcon.classList.remove('bi-exclamation-triangle-fill', 'bi-check-circle-fill', 'text-danger', 'text-success');
+
+                        if (data.status === 'fraud') {
+                            resultBox.classList.add('result-fraud');
+                            resultIcon.classList.add('bi-exclamation-triangle-fill', 'text-danger');
+                        } else {
+                            resultBox.classList.add('result-genuine');
+                            resultIcon.classList.add('bi-check-circle-fill', 'text-success');
+                        }
+
+                        resultText.textContent = data.prediction;
+                        resultBox.style.display = 'block';
+
+                        // Smooth scroll to result
+                        resultBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    })
+                    .catch(error => {
+                        // Error handling
+                        loadingSpinner.style.display = 'none';
+                        submitBtn.disabled = false;
+
+                        errorAlert.textContent = error.error || 'An unexpected error occurred.';
+                        errorAlert.classList.remove('d-none');
+                    });
+            });
+        });
+    </script>
+
+</body>
+
+</html>
